@@ -14,6 +14,10 @@
       "stopMarker": {
         "type": "string",
         "description": "Marker string agent must include at the end of its reply to signal intentional stop. Default: [我确认工作循环需要结束"
+      },
+      "yieldMarker": {
+        "type": "string",
+        "description": "Marker string agent must include at the end of its reply when intentionally yielding to wait for a subagent. Suppresses wake without deleting the flag. Default: [我正在等待子代理完成"
       }
     }
   }

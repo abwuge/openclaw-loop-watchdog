@@ -4,6 +4,15 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 const DEFAULT_STOP_MARKER = "[我确认工作循环需要结束";
+const DEFAULT_YIELD_MARKER = "[我正在等待子代理完成";
+
+// ── Flag data shape ──────────────────────────────────────────────────────────
+
+interface FlagData {
+  sessionKey: string;
+  startedAt: string;
+  trigger: string;
+}
 
 // ── Path helpers ────────────────────────────────────────────────────────────
 
@@ -18,14 +27,18 @@ function flagPath(watchdogDir: string, sessionKey: string): string {
   return path.join(watchdogDir, `${safe}.running`);
 }
 
-function writeFlag(watchdogDir: string, sessionKey: string, data: object): void {
+function writeFlag(watchdogDir: string, sessionKey: string, data: FlagData): void {
   fs.mkdirSync(watchdogDir, { recursive: true });
   fs.writeFileSync(flagPath(watchdogDir, sessionKey), JSON.stringify(data, null, 2), "utf8");
 }
 
-function readFlag(watchdogDir: string, sessionKey: string): object | null {
+function readFlag(watchdogDir: string, sessionKey: string): FlagData | null {
   try {
-    return JSON.parse(fs.readFileSync(flagPath(watchdogDir, sessionKey), "utf8"));
+    const raw = JSON.parse(fs.readFileSync(flagPath(watchdogDir, sessionKey), "utf8"));
+    if (typeof raw?.sessionKey === "string" && typeof raw?.startedAt === "string") {
+      return raw as FlagData;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -51,14 +64,18 @@ function extractLastAssistantText(messages: unknown[]): string {
   return "";
 }
 
-function hasStopMarkerAtTail(text: string, marker: string): boolean {
+function hasMarkerAtTail(text: string, marker: string): boolean {
   const trimmed = text.trimEnd();
   const idx = trimmed.lastIndexOf(marker);
   if (idx === -1) return false;
-  // No blank line (new paragraph) after the marker — it must be at the tail
+  // Allow trailing text on the same paragraph, but reject if a blank line
+  // (i.e. a new paragraph) appears after the marker — marker must be at the tail.
   const after = trimmed.slice(idx + marker.length);
   return !after.includes("\n\n");
 }
+
+/** @deprecated Use hasMarkerAtTail */
+const hasStopMarkerAtTail = hasMarkerAtTail;
 
 // ── Wake message templates ───────────────────────────────────────────────────
 
@@ -202,8 +219,18 @@ export default definePluginEntry({
       if (!flag) return;
 
       const lastText = extractLastAssistantText(event.messages);
-      if (hasStopMarkerAtTail(lastText, stopMarker)) {
+
+      // Intentional completion — clean up and stop.
+      if (hasMarkerAtTail(lastText, stopMarker)) {
         deleteFlag(watchdogDir, sessionKey);
+        return;
+      }
+
+      // Intentional yield (waiting for subagent results) — leave the flag so
+      // gateway_start can still recover after a crash, but do NOT send a wake
+      // message. The subagent push-notification will re-enter the session.
+      const yieldMarker = (pluginCfg.yieldMarker as string | undefined) ?? DEFAULT_YIELD_MARKER;
+      if (hasMarkerAtTail(lastText, yieldMarker)) {
         return;
       }
 
@@ -239,11 +266,27 @@ export default definePluginEntry({
       }
 
       for (const file of files) {
-        const sessionKey = file.replace(/\.running$/, "").replace(/_/g, ":");
+        const filePath = path.join(watchdogDir, file);
+        let flagData: FlagData | null = null;
+        try {
+          const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+          if (typeof raw?.sessionKey === "string" && typeof raw?.startedAt === "string") {
+            flagData = raw as FlagData;
+          }
+        } catch { /* malformed flag — skip */ }
+
+        if (!flagData) {
+          api.logger.warn(`[loop-watchdog] gateway_start: could not read sessionKey from ${file}, skipping`);
+          continue;
+        }
+
+        const sessionKey = flagData.sessionKey;
+        // Use startedAt for a stable idempotency key across rapid restarts.
+        const idempKey = `loop-watchdog-restart-${sessionKey}-${flagData.startedAt}`;
         try {
           await api.runtime.subagent.run({
             sessionKey,
-            idempotencyKey: `loop-watchdog-restart-${sessionKey}-${Date.now()}`,
+            idempotencyKey: idempKey,
             message: WAKE_MSG_GATEWAY_START,
           });
         } catch (err) {
