@@ -1,0 +1,20 @@
+{
+  "id": "loop-watchdog",
+  "name": "Loop Watchdog",
+  "description": "Detects unintentional agent loop interruptions and prompts the agent to resume or confirm completion.",
+  "extensions": ["./index.ts"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "watchdogDir": {
+        "type": "string",
+        "description": "Directory to store watchdog flag files. Defaults to <workspaceDir>/watchdog."
+      },
+      "stopMarker": {
+        "type": "string",
+        "description": "Marker string agent must include at the end of its reply to signal intentional stop. Default: [我确认工作循环需要结束"
+      }
+    }
+  }
+}
