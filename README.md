@@ -15,7 +15,7 @@ An [OpenClaw](https://openclaw.ai) plugin that detects unintentional agent loop 
 ### 1. Install the plugin
 
 ```bash
-openclaw plugins install loop-watchdog
+openclaw plugins install @abwuge/openclaw-loop-watchdog
 ```
 
 ### 2. Install the gateway hook
