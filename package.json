@@ -6,12 +6,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/abwuge/openclaw-loop-watchdog.git"
+    "url": "git+https://github.com/abwuge/openclaw-loop-watchdog.git"
   },
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
-  "keywords": ["openclaw", "openclaw-plugin", "agent", "watchdog"],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "agent",
+    "watchdog"
+  ],
   "peerDependencies": {
     "openclaw": "*"
   }
