@@ -230,6 +230,8 @@ The following concrete fixes were applied directly:
 
 4. **Comment on `hasStopMarkerAtTail` (Issue 5):** Added explanatory inline comment.
 
+5. **Issue 3 fix (2026-03-27):** Changed trigger guard in `before_agent_start` from `ctx.trigger !== "user"` to `ctx.trigger === "subagent"`. This ensures watchdog-injected wake messages (trigger: system/undefined) also plant a flag, so re-entered sessions are properly tracked.
+
 ---
 
 ## Yield Marker — Required AGENTS.md Addition

@@ -201,7 +201,8 @@ export default definePluginEntry({
     api.on("before_agent_start", (_event, ctx) => {
       const sessionKey = ctx.sessionKey;
       if (!sessionKey) return;
-      if (ctx.trigger && ctx.trigger !== "user") return;
+      // Skip true subagent sessions; allow user, system, and watchdog-injected wakes.
+      if (ctx.trigger === "subagent") return;
       const watchdogDir = getWatchdogDir(ctx.workspaceDir, pluginCfg.watchdogDir as string | undefined);
       writeFlag(watchdogDir, sessionKey, {
         sessionKey,
