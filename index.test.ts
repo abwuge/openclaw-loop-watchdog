@@ -227,6 +227,48 @@ describe("wake-decision logic (agent_end handler simulation)", () => {
   test("custom yieldMarker config respected", () => {
     assert.equal(shouldWake(makeMessages("waiting [YIELD_NOW]"), DEFAULT_STOP_MARKER, "[YIELD_NOW]"), false);
   });
+
+  // ── Yield marker edge cases (subagent yield protocol) ─────────────────────
+
+  test("yield marker at paragraph end (no trailing \\n\\n) → suppresses wake", () => {
+    // Case a: yield marker is truly at the tail of the message
+    const reply =
+      "Spawning subagents for parallel processing.\n" +
+      "[我正在等待子代理完成...]";
+    assert.equal(shouldWake(makeMessages(reply)), false);
+  });
+
+  test("yield marker followed by \\n\\n with more content → does NOT suppress wake", () => {
+    // Case b: marker appears mid-message before a paragraph break,
+    // so it is not truly at tail — wake should proceed
+    const reply =
+      "[我正在等待子代理完成...]\n\n" +
+      "Actually I have more to say after the blank line.";
+    assert.equal(shouldWake(makeMessages(reply)), true);
+  });
+
+  test("both yield marker and stop marker present — stop marker at tail → no wake (stop takes priority)", () => {
+    // Case c: stop marker appears after yield marker in the same message.
+    // hasMarkerAtTail checks stop first; stop at tail → suppress wake.
+    const reply =
+      "[我正在等待子代理完成...]\n" +
+      "[我确认工作循环需要结束，而不是无意义的结束]\n" +
+      "本次工作内容：已完成\n" +
+      "结束理由：任务完成";
+    assert.equal(shouldWake(makeMessages(reply)), false);
+  });
+
+  test("both yield marker and stop marker present — yield marker at tail → no wake", () => {
+    // Variant: stop marker buried before a \\n\\n, yield marker at real tail.
+    // shouldWake checks stop first (returns false on stop at tail),
+    // then checks yield. Either suppression → no wake.
+    const reply =
+      "[我确认工作循环需要结束]\n\n" +
+      "Wait, spawning one more subagent.\n" +
+      "[我正在等待子代理完成...]";
+    // stop marker NOT at tail (has \n\n after), yield IS at tail → no wake
+    assert.equal(shouldWake(makeMessages(reply)), false);
+  });
 });
 
 describe("flag file I/O", () => {
