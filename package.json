@@ -1,6 +1,6 @@
 {
   "name": "@abwuge/openclaw-loop-watchdog",
-  "version": "1.0.2",
+  "version": "1.0.1",
   "description": "OpenClaw plugin: detects unintentional agent loop interruptions and prompts the agent to resume.",
   "type": "module",
   "license": "MIT",
