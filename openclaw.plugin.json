@@ -7,11 +7,6 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "lang": {
-        "type": "string",
-        "description": "Locale for wake messages and default markers. Built-in: 'en' (default), 'zh'. Add custom locales by placing a JSON file in the plugin's locales/ directory.",
-        "default": "en"
-      },
       "watchdogDir": {
         "type": "string",
         "description": "Directory to store watchdog flag files. Defaults to <workspaceDir>/watchdog."

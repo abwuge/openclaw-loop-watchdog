@@ -13,39 +13,32 @@ interface Locale {
   wakeMessageGatewayStart: string;
 }
 
-function loadLocale(lang: string, pluginDir: string): Locale {
-  const localesDir = path.join(pluginDir, "locales");
-  const filePath = path.join(localesDir, `${lang}.json`);
+function loadLocale(pluginDir: string): Locale {
+  const localePath = path.join(pluginDir, "locale.json");
   try {
-    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const raw = JSON.parse(fs.readFileSync(localePath, "utf8"));
     return raw as Locale;
   } catch {
-    // Fallback to English
-    const enPath = path.join(localesDir, "en.json");
-    try {
-      return JSON.parse(fs.readFileSync(enPath, "utf8")) as Locale;
-    } catch {
-      // Hardcoded English fallback if locale files are missing
-      return {
-        stopMarker: "[I confirm the work loop should end",
-        yieldMarker: "[I am waiting for subagent to complete",
-        wakeMarkerFormat:
-          "Stop marker format (only use when the task is truly complete):\n" +
-          "[I confirm the work loop should end, not end meaninglessly]\n" +
-          "Work done: <one sentence describing what you completed>\n" +
-          "Reason to stop: <one sentence explaining why you are stopping>",
-        wakeMessageAgentEnd:
-          "[System] Your last work loop ended without a valid stop marker.\n\n" +
-          "Possible situations:\n" +
-          "1. Unexpected interruption (timeout, error) → Continue directly with the next step.\n" +
-          "2. Task completed but forgot the marker → Self-check: Is the task truly and fully complete? " +
-          "Did you leave any unresolved questions? Did you ask any unnecessary confirmations? " +
-          "If the task is truly done, add the stop marker and stop.\n\n" +
-          "{wakeMarkerFormat}",
-        wakeMessageGatewayStart:
-          "[System] Your work loop was interrupted by a gateway restart. Please continue with the next step directly.",
-      };
-    }
+    // Hardcoded fallback if locale.json is missing
+    return {
+      stopMarker: "[I confirm the work loop should end",
+      yieldMarker: "[I am waiting for subagent to complete",
+      wakeMarkerFormat:
+        "Stop marker format (only use when the task is truly complete):\n" +
+        "[I confirm the work loop should end, not end meaninglessly]\n" +
+        "Work done: <one sentence describing what you completed>\n" +
+        "Reason to stop: <one sentence explaining why you are stopping>",
+      wakeMessageAgentEnd:
+        "[System] Your last work loop ended without a valid stop marker.\n\n" +
+        "Possible situations:\n" +
+        "1. Unexpected interruption (timeout, error) → Continue directly with the next step.\n" +
+        "2. Task completed but forgot the marker → Self-check: Is the task truly and fully complete? " +
+        "Did you leave any unresolved questions? Did you ask any unnecessary confirmations? " +
+        "If the task is truly done, add the stop marker and stop.\n\n" +
+        "{wakeMarkerFormat}",
+      wakeMessageGatewayStart:
+        "[System] Your work loop was interrupted by a gateway restart. Please continue with the next step directly.",
+    };
   }
 }
 
@@ -200,9 +193,9 @@ export default definePluginEntry({
     const pluginCfg = (api.pluginConfig ?? {}) as Record<string, unknown>;
 
     // ── Locale loading ───────────────────────────────────────────────────────
-    const lang: string = typeof pluginCfg.lang === "string" ? pluginCfg.lang : "en";
+    // locale.json in the plugin directory — translate it to your preferred language via LLM.md
     const pluginDir = path.dirname(new URL(import.meta.url).pathname);
-    const locale = loadLocale(lang, pluginDir);
+    const locale = loadLocale(pluginDir);
 
     const stopMarker: string =
       typeof pluginCfg.stopMarker === "string" ? pluginCfg.stopMarker : locale.stopMarker;
