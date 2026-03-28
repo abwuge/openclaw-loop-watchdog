@@ -19,7 +19,10 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
       - name: Publish
         run: |
           echo 'registry=https://registry.npmjs.org' > ~/.npmrc
-          npm publish --provenance --access public --loglevel silly 2>&1 | tee /tmp/npm-publish.log; exit ${PIPESTATUS[0]}
+          npm publish --provenance --access public
