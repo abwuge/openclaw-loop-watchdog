@@ -22,4 +22,4 @@ jobs:
       - name: Publish
         run: |
           echo 'registry=https://registry.npmjs.org' > ~/.npmrc
-          npm publish --provenance --access public
+          npm publish --provenance --access public --loglevel silly 2>&1 | tee /tmp/npm-publish.log; exit ${PIPESTATUS[0]}
