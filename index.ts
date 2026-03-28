@@ -3,8 +3,58 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const DEFAULT_STOP_MARKER = "[我确认工作循环需要结束";
-const DEFAULT_YIELD_MARKER = "[我正在等待子代理完成";
+// ── Locale support ───────────────────────────────────────────────────────────
+
+interface Locale {
+  stopMarker: string;
+  yieldMarker: string;
+  wakeMarkerFormat: string;
+  wakeMessageAgentEnd: string;
+  wakeMessageGatewayStart: string;
+}
+
+function loadLocale(lang: string, pluginDir: string): Locale {
+  const localesDir = path.join(pluginDir, "locales");
+  const filePath = path.join(localesDir, `${lang}.json`);
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return raw as Locale;
+  } catch {
+    // Fallback to English
+    const enPath = path.join(localesDir, "en.json");
+    try {
+      return JSON.parse(fs.readFileSync(enPath, "utf8")) as Locale;
+    } catch {
+      // Hardcoded English fallback if locale files are missing
+      return {
+        stopMarker: "[I confirm the work loop should end",
+        yieldMarker: "[I am waiting for subagent to complete",
+        wakeMarkerFormat:
+          "Stop marker format (only use when the task is truly complete):\n" +
+          "[I confirm the work loop should end, not end meaninglessly]\n" +
+          "Work done: <one sentence describing what you completed>\n" +
+          "Reason to stop: <one sentence explaining why you are stopping>",
+        wakeMessageAgentEnd:
+          "[System] Your last work loop ended without a valid stop marker.\n\n" +
+          "Possible situations:\n" +
+          "1. Unexpected interruption (timeout, error) → Continue directly with the next step.\n" +
+          "2. Task completed but forgot the marker → Self-check: Is the task truly and fully complete? " +
+          "Did you leave any unresolved questions? Did you ask any unnecessary confirmations? " +
+          "If the task is truly done, add the stop marker and stop.\n\n" +
+          "{wakeMarkerFormat}",
+        wakeMessageGatewayStart:
+          "[System] Your work loop was interrupted by a gateway restart. Please continue with the next step directly.",
+      };
+    }
+  }
+}
+
+function buildWakeMessageAgentEnd(locale: Locale): string {
+  return locale.wakeMessageAgentEnd.replace("{wakeMarkerFormat}", locale.wakeMarkerFormat);
+}
+
+const DEFAULT_STOP_MARKER = "[I confirm the work loop should end";
+const DEFAULT_YIELD_MARKER = "[I am waiting for subagent to complete";
 
 // ── Flag data shape ──────────────────────────────────────────────────────────
 
@@ -79,21 +129,7 @@ const hasStopMarkerAtTail = hasMarkerAtTail;
 
 // ── Wake message templates ───────────────────────────────────────────────────
 
-const WAKE_MARKER_FORMAT =
-  "结束标记格式（仅在任务真正完成时使用）：\n" +
-  "[我确认工作循环需要结束，而不是无意义的结束]\n" +
-  "本次工作内容：<一句话说明你完成了什么>\n" +
-  "结束理由：<一句话说明为什么结束>";
-
-const WAKE_MSG_AGENT_END =
-  "[系统提示] 你上一个工作循环已结束，但没有留下有效的结束标记。\n\n" +
-  "可能的情况：\n" +
-  "1. 意外中断（超时、错误）→ 直接继续执行下一步。\n" +
-  "2. 任务完成但忘记标记 → 先自查：任务是否真正全部完成？最后一步是否留下了悬而未决的问题？是否向用户问了不必要的确认？如果确认任务已真正完成，补上结束标记后停止。\n\n" +
-  WAKE_MARKER_FORMAT;
-
-const WAKE_MSG_GATEWAY_START =
-  "[系统提示] 你的工作循环已被网关重启打断，请直接继续下一步。";
+// Wake messages are loaded from locale files at plugin init time.
 
 // ── CLI setup/uninstall helpers ──────────────────────────────────────────────
 
@@ -156,14 +192,20 @@ function uninstallHook(hooksDir?: string): void {
 // ── Plugin entry ─────────────────────────────────────────────────────────────
 
 export default definePluginEntry({
-  id: "loop-watchdog",
+  id: "openclaw-loop-watchdog",
   name: "Loop Watchdog",
   description: "Detects unintentional agent loop interruptions and prompts the agent to resume.",
 
   register(api) {
     const pluginCfg = (api.pluginConfig ?? {}) as Record<string, unknown>;
+
+    // ── Locale loading ───────────────────────────────────────────────────────
+    const lang: string = typeof pluginCfg.lang === "string" ? pluginCfg.lang : "en";
+    const pluginDir = path.dirname(new URL(import.meta.url).pathname);
+    const locale = loadLocale(lang, pluginDir);
+
     const stopMarker: string =
-      typeof pluginCfg.stopMarker === "string" ? pluginCfg.stopMarker : DEFAULT_STOP_MARKER;
+      typeof pluginCfg.stopMarker === "string" ? pluginCfg.stopMarker : locale.stopMarker;
 
     // ── CLI: loop-watchdog setup / uninstall ─────────────────────────────────
     api.registerCli(
@@ -234,7 +276,7 @@ export default definePluginEntry({
       // Intentional yield (waiting for subagent results) — leave the flag so
       // gateway_start can still recover after a crash, but do NOT send a wake
       // message. The subagent push-notification will re-enter the session.
-      const yieldMarker = (pluginCfg.yieldMarker as string | undefined) ?? DEFAULT_YIELD_MARKER;
+      const yieldMarker = (pluginCfg.yieldMarker as string | undefined) ?? locale.yieldMarker;
       if (hasMarkerAtTail(lastText, yieldMarker)) {
         return;
       }
@@ -243,7 +285,7 @@ export default definePluginEntry({
         await api.runtime.subagent.run({
           sessionKey,
           idempotencyKey: `loop-watchdog-wake-${sessionKey}-${Date.now()}`,
-          message: WAKE_MSG_AGENT_END,
+          message: buildWakeMessageAgentEnd(locale),
         });
       } catch (err) {
         api.logger.error(`[loop-watchdog] Failed to send wake message: ${err}`);
@@ -292,7 +334,7 @@ export default definePluginEntry({
           await api.runtime.subagent.run({
             sessionKey,
             idempotencyKey: idempKey,
-            message: WAKE_MSG_GATEWAY_START,
+            message: locale.wakeMessageGatewayStart,
           });
         } catch (err) {
           api.logger.error(`[loop-watchdog] gateway_start: failed to wake ${sessionKey}: ${err}`);

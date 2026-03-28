@@ -1,14 +1,6 @@
 # openclaw-loop-watchdog
 
-An [OpenClaw](https://openclaw.ai) plugin that detects unintentional agent loop interruptions and automatically prompts the agent to resume or confirm completion.
-
-## How it works
-
-- **`before_agent_start`** — plants a flag file when a run begins (user-triggered or watchdog-injected wake messages)
-- **`agent_end`** — checks the agent's last reply for a valid stop marker or yield marker at the tail; if neither is present, injects a wake message asking the agent to resume or confirm completion
-- **`gateway_start`** — on gateway restart, scans for orphaned flag files (including those left intentionally during a subagent yield) and wakes any interrupted sessions
-- **`before_reset`** — clears the flag on `/new` or `/reset`
-- **`stop-watchdog-clear` gateway hook** — clears the flag on `/stop` to prevent spurious wake-ups after intentional stops (installed via `openclaw loop-watchdog setup`)
+An [OpenClaw](https://openclaw.ai) plugin that detects unintentional agent loop interruptions and automatically wakes the agent to resume or confirm completion.
 
 ## For AI Agents (LLM Installation Guide)
 
@@ -34,7 +26,7 @@ If you are an AI agent helping a user install this plugin, follow these steps ex
    ```bash
    openclaw plugins list
    ```
-   Confirm `loop-watchdog` appears with status `loaded` and version `1.0.1` or higher.
+   Confirm `openclaw-loop-watchdog` appears with status `loaded`.
    Also confirm the hook is present:
    ```bash
    ls ~/.openclaw/hooks/stop-watchdog-clear/
@@ -42,9 +34,48 @@ If you are an AI agent helping a user install this plugin, follow these steps ex
 
 5. **Update your AGENTS.md** — Add the stop marker rule so the agent knows when and how to signal intentional completion (see "Stop marker format" below). Without this, every session end will trigger a watchdog wake.
 
-6. **Behavioral change after installation:** From this point on, every time your session ends without the stop marker, you will receive a wake message asking you to resume or confirm completion. This is intentional. Use the stop marker when your task is truly done.
+6. **Configure language (optional):**
+   In `openclaw.json`, under `plugins.entries.openclaw-loop-watchdog.config`, set:
+   ```json
+   { "lang": "zh" }
+   ```
+   Built-in languages: `en` (default), `zh`. Custom locales can be added to the plugin's `locales/` directory.
+
+7. **Behavioral change after installation:** From this point on, every time your session ends without the stop marker, you will receive a wake message asking you to resume or confirm completion. This is intentional. Use the stop marker when your task is truly done.
 
 ---
+
+## How It Works
+
+The plugin maintains a `.running` flag file for each active agent session:
+
+- **`before_agent_start`** — Creates the flag when a session starts
+- **`agent_end`** — Checks the last assistant message for a stop or yield marker; if absent, sends a wake message to resume the session
+- **`gateway_start`** — On gateway restart, scans for orphaned flags (sessions interrupted by crash/restart) and sends wake messages
+- **`before_reset`** — Clears the flag on `/new` or `/reset`
+- **Gateway hook** (`stop-watchdog-clear`) — Clears the flag when `/stop` is issued
+
+## Stop Marker Format
+
+The agent must include this marker at the end of its final message when a task is truly complete:
+
+```
+[I confirm the work loop should end, not end meaninglessly]
+Work done: <one sentence describing what you completed>
+Reason to stop: <one sentence explaining why you are stopping>
+```
+
+(For Chinese locale, the marker starts with `[我确认工作循环需要结束`)
+
+## Yield Marker
+
+When the agent intentionally yields to wait for a subagent, it should include:
+
+```
+[I am waiting for subagent to complete
+```
+
+The watchdog will not send a wake message when this marker is detected.
 
 ## Installation
 
@@ -60,102 +91,65 @@ openclaw plugins install @abwuge/openclaw-loop-watchdog
 openclaw loop-watchdog setup
 ```
 
-This installs the `stop-watchdog-clear` gateway hook to `~/.openclaw/hooks/stop-watchdog-clear/`.
-
 ### 3. Restart the gateway
 
 ```bash
 openclaw gateway restart
 ```
 
-## Uninstall
+### 4. Update AGENTS.md
 
-```bash
-openclaw loop-watchdog uninstall
-openclaw plugins uninstall loop-watchdog
-openclaw gateway restart
-```
-
-## Stop marker format
-
-The agent must include the following marker **at the end** of its reply to signal intentional completion:
-
-```
-[我确认工作循环需要结束，而不是无意义的结束]
-本次工作内容：<一句话说明你完成了什么>
-结束理由：<一句话说明为什么结束>
-```
-
-Add this rule to your `AGENTS.md`:
+Add the following to your `AGENTS.md`:
 
 ```markdown
-When you judge that the current task is truly complete, your final reply must include:
+## Loop Watchdog
 
-[我确认工作循环需要结束，而不是无意义的结束]
-本次工作内容：<一句话说明你完成了什么>
-结束理由：<一句话说明为什么结束>
+When your task is truly complete, end your final message with:
 
-Do NOT use this marker when asking the user a question or waiting for a reply.
-```
+[I confirm the work loop should end, not end meaninglessly]
+Work done: <one sentence>
+Reason to stop: <one sentence>
 
-## Yield marker (subagent suspension)
-
-When the agent spawns a subagent and calls `sessions_yield`, the session ends its turn — which would normally trigger a watchdog wake. To prevent this false alarm, the agent writes a **yield marker** before yielding. The watchdog skips the wake but **preserves the flag file**, so `gateway_start` can still recover the session if the gateway crashes while the agent is waiting.
-
-The agent's last message before `sessions_yield` must end with:
-
-```
-[我正在等待子代理完成...]
-```
-
-Add this rule to your `AGENTS.md`:
-
-```markdown
-## Subagent Yield Protocol
-
-当你派出子代理并需要等待其完成时，在调用 `sessions_yield` 或结束当前回复前，**必须**在回复末尾加上：
-
-[我正在等待子代理完成...]
-
-loop-watchdog 检测到此标记后会跳过 wake 消息，避免误判为意外中断。flag 文件保留，gateway 崩溃后仍可恢复。
+When yielding to wait for a subagent result, include:
+[I am waiting for subagent to complete
 ```
 
 ## Configuration
 
-Optional config in `openclaw.json`:
+Add to `openclaw.json` under `plugins.entries.openclaw-loop-watchdog.config`:
 
-```json5
+```json
 {
-  plugins: {
-    entries: {
-      "loop-watchdog": {
-        enabled: true,
-        config: {
-          // Custom watchdog flag directory (default: <workspaceDir>/watchdog)
-          watchdogDir: "/path/to/watchdog",
-          // Custom stop marker string (default: "[我确认工作循环需要结束")
-          stopMarker: "[我确认工作循环需要结束",
-          // Custom yield marker string (default: "[我正在等待子代理完成")
-          yieldMarker: "[我正在等待子代理完成"
-        }
-      }
-    }
-  }
+  "lang": "en",
+  "watchdogDir": "/custom/path/to/watchdog",
+  "stopMarker": "[custom stop marker",
+  "yieldMarker": "[custom yield marker"
 }
 ```
 
-## Bug fixes (2026-03-27)
+| Option | Default | Description |
+|--------|---------|-------------|
+| `lang` | `"en"` | Locale for messages. Built-in: `en`, `zh` |
+| `watchdogDir` | `<workspace>/watchdog` | Directory for flag files |
+| `stopMarker` | (from locale) | Custom stop marker prefix |
+| `yieldMarker` | (from locale) | Custom yield marker prefix |
 
-Four correctness issues were fixed in this release:
+## Changelog
 
-1. **`gateway_start` sessionKey restoration** — Previously the code reverse-engineered the sessionKey from the flag filename (replacing `_` with `:`), which was wrong for keys containing legitimate underscores. Fixed by reading `sessionKey` directly from the JSON payload inside the flag file.
+### 1.1.0
+- Added i18n support with locale files (`locales/en.json`, `locales/zh.json`)
+- Default language changed to English
+- Fixed plugin id to `openclaw-loop-watchdog`
+- Updated GitHub Actions to Node.js 24 compatible versions
+- Added detailed LLM installation guide
 
-2. **Stable idempotency key on restart** — The idempotency key for restart wake messages was based on `Date.now()`, meaning rapid gateway restarts could send duplicate wake messages. Fixed by using `flagData.startedAt` (written once at flag creation) as the stable key component.
+### 1.0.2
+- Added LLM installation guide to README
+- Improved plugin description
 
-3. **Trigger guard in `before_agent_start`** — The guard `ctx.trigger !== "user"` skipped flag planting for watchdog-injected wake messages (trigger: `system`/`undefined`), leaving re-entered sessions untracked. Fixed by changing to `ctx.trigger === "subagent"` so only subagent-triggered entries are skipped.
+### 1.0.1
+- Fixed CI trusted publishing (npm OIDC)
+- Upgraded npm in CI for trusted publishing support
 
-4. **Yield marker false-alarm prevention** — `agent_end` had no way to distinguish a legitimate subagent yield from an unexpected interruption, causing spurious wake messages whenever the agent called `sessions_yield`. Fixed by detecting a yield marker in the agent's last message and skipping the wake while preserving the flag for crash recovery.
-
-## License
-
-MIT
+### 1.0.0
+- Initial release

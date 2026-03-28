@@ -1,0 +1,7 @@
+{
+  "stopMarker": "[I confirm the work loop should end",
+  "yieldMarker": "[I am waiting for subagent to complete",
+  "wakeMarkerFormat": "Stop marker format (only use when the task is truly complete):\n[I confirm the work loop should end, not end meaninglessly]\nWork done: <one sentence describing what you completed>\nReason to stop: <one sentence explaining why you are stopping>",
+  "wakeMessageAgentEnd": "[System] Your last work loop ended without a valid stop marker.\n\nPossible situations:\n1. Unexpected interruption (timeout, error) → Continue directly with the next step.\n2. Task completed but forgot the marker → Self-check: Is the task truly and fully complete? Did you leave any unresolved questions? Did you ask any unnecessary confirmations? If the task is truly done, add the stop marker and stop.\n\n{wakeMarkerFormat}",
+  "wakeMessageGatewayStart": "[System] Your work loop was interrupted by a gateway restart. Please continue with the next step directly."
+}
