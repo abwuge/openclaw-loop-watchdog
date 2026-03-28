@@ -252,16 +252,20 @@ export default definePluginEntry({
 
     // ── agent_end: check the flag ────────────────────────────────────────────
     api.on("agent_end", async (event, ctx) => {
+      api.logger.info(`[loop-watchdog] agent_end entered sk=${ctx.sessionKey}`);
       const sessionKey = ctx.sessionKey;
       if (!sessionKey) return;
       const watchdogDir = getWatchdogDir(ctx.workspaceDir, pluginCfg.watchdogDir as string | undefined);
       const flag = readFlag(watchdogDir, sessionKey);
+      api.logger.info(`[loop-watchdog] readFlag result: ${flag ? "found" : "null"} dir=${watchdogDir}`);
       if (!flag) return;
 
       const lastText = extractLastAssistantText(event.messages);
 
       // Intentional completion — clean up and stop.
+      api.logger.info(`[loop-watchdog] lastText tail: ${JSON.stringify(lastText.slice(-150))}`);
       if (hasMarkerAtTail(lastText, stopMarker)) {
+        api.logger.info(`[loop-watchdog] stop marker detected, cleaning up`);
         deleteFlag(watchdogDir, sessionKey);
         return;
       }
@@ -336,3 +340,4 @@ export default definePluginEntry({
     });
   },
 });
+
