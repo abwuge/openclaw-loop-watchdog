@@ -10,6 +10,42 @@ An [OpenClaw](https://openclaw.ai) plugin that detects unintentional agent loop 
 - **`before_reset`** — clears the flag on `/new` or `/reset`
 - **`stop-watchdog-clear` gateway hook** — clears the flag on `/stop` to prevent spurious wake-ups after intentional stops (installed via `openclaw loop-watchdog setup`)
 
+## For AI Agents (LLM Installation Guide)
+
+If you are an AI agent helping a user install this plugin, follow these steps exactly:
+
+1. **Install the plugin:**
+   ```bash
+   openclaw plugins install @abwuge/openclaw-loop-watchdog
+   ```
+
+2. **Install the gateway hook:**
+   ```bash
+   openclaw loop-watchdog setup
+   ```
+
+3. **Restart the gateway:**
+   ```bash
+   openclaw gateway restart
+   ```
+   Note: the gateway restart will interrupt your current session. This is expected — continue after reconnecting.
+
+4. **Verify installation:**
+   ```bash
+   openclaw plugins list
+   ```
+   Confirm `loop-watchdog` appears with status `loaded` and version `1.0.1` or higher.
+   Also confirm the hook is present:
+   ```bash
+   ls ~/.openclaw/hooks/stop-watchdog-clear/
+   ```
+
+5. **Update your AGENTS.md** — Add the stop marker rule so the agent knows when and how to signal intentional completion (see "Stop marker format" below). Without this, every session end will trigger a watchdog wake.
+
+6. **Behavioral change after installation:** From this point on, every time your session ends without the stop marker, you will receive a wake message asking you to resume or confirm completion. This is intentional. Use the stop marker when your task is truly done.
+
+---
+
 ## Installation
 
 ### 1. Install the plugin
