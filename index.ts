@@ -250,6 +250,42 @@ export default definePluginEntry({
       });
     });
 
+    // ── message_sent: check the flag on every outbound message ─────────────
+    // This fires more reliably than agent_end for cron-event and other lightweight
+    // channel sessions where agent_end may not be called.
+    api.on("message_sent", (_event, ctx) => {
+      const sessionKey = ctx.sessionKey;
+      if (!sessionKey) return;
+      const watchdogDir = getWatchdogDir(ctx.workspaceDir, pluginCfg.watchdogDir as string | undefined);
+      const flag = readFlag(watchdogDir, sessionKey);
+      if (!flag) return;
+
+      const text = (typeof (_event as Record<string, unknown>).text === "string")
+        ? (_event as Record<string, unknown>).text as string
+        : (typeof (_event as Record<string, unknown>).content === "string")
+          ? (_event as Record<string, unknown>).content as string
+          : "";
+
+      // Debug
+      try {
+        fs.appendFileSync(
+          path.join(watchdogDir, "debug.log"),
+          JSON.stringify({ ts: new Date().toISOString(), hook: "message_sent", textLen: text.length, text300: text.slice(-300), stopMarkerFound: hasMarkerAtTail(text, stopMarker) }) + "\n",
+          "utf8"
+        );
+      } catch { /* ignore */ }
+
+      if (hasMarkerAtTail(text, stopMarker)) {
+        deleteFlag(watchdogDir, sessionKey);
+      }
+
+      const yieldMarker = (pluginCfg.yieldMarker as string | undefined) ?? DEFAULT_YIELD_MARKER;
+      if (hasMarkerAtTail(text, yieldMarker)) {
+        // Leave flag for gateway_start recovery, but don't wake.
+        // (No action needed here — wake suppression is handled in agent_end)
+      }
+    });
+
     // ── agent_end: check the flag ────────────────────────────────────────────
     api.on("agent_end", async (event, ctx) => {
       api.logger.info(`[loop-watchdog] agent_end entered sk=${ctx.sessionKey}`);
@@ -261,6 +297,20 @@ export default definePluginEntry({
       if (!flag) return;
 
       const lastText = extractLastAssistantText(event.messages);
+
+      // Debug: write to file for diagnosis (remove after fix)
+      try {
+        const debugEntry = JSON.stringify({
+          ts: new Date().toISOString(),
+          sessionKey,
+          msgCount: event.messages?.length ?? -1,
+          lastTextLen: lastText.length,
+          lastText300: lastText.slice(-300),
+          stopMarkerFound: hasMarkerAtTail(lastText, stopMarker),
+          yieldMarkerFound: hasMarkerAtTail(lastText, (pluginCfg.yieldMarker as string | undefined) ?? DEFAULT_YIELD_MARKER),
+        }) + "\n";
+        fs.appendFileSync(path.join(watchdogDir, "debug.log"), debugEntry, "utf8");
+      } catch { /* ignore debug errors */ }
 
       // Intentional completion — clean up and stop.
       api.logger.info(`[loop-watchdog] lastText tail: ${JSON.stringify(lastText.slice(-150))}`);
