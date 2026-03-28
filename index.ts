@@ -268,7 +268,7 @@ export default definePluginEntry({
             });
             fs.appendFileSync(
               path.join(watchdogDir, "debug.log"),
-              JSON.stringify({ ts: new Date().toISOString(), hook: "before_agent_start", lastTextLen: lastText.length, first100: lastText.slice(0, 100), last300: lastText.slice(-300), stopFound: hasMarkerAtTail(lastText, stopMarker), yieldFound: hasMarkerAtTail(lastText, yieldMarker), msgSummary }) + "\n",
+              JSON.stringify({ ts: new Date().toISOString(), hook: "before_agent_start", lastTextLen: lastText.length, first100: lastText.slice(0, 100), last300: lastText.slice(-300), stopFound: hasMarkerAtTail(lastText, stopMarker), yieldFound: hasMarkerAtTail(lastText, yieldMarker), msgSummary, stopMarker, stopMarkerCodes: Array.from(stopMarker).map(c => c.codePointAt(0)), markerIdx: lastText.trimEnd().lastIndexOf(stopMarker) }) + "\n",
               "utf8"
             );
           } catch { /* ignore */ }
