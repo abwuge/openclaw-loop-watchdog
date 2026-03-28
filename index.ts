@@ -98,10 +98,13 @@ function extractLastAssistantText(messages: unknown[]): string {
     const content = msg.content;
     if (typeof content === "string") return content;
     if (Array.isArray(content)) {
+      // Concatenate ALL text blocks (marker may be in a later block)
+      const parts: string[] = [];
       for (const block of content) {
         const b = block as Record<string, unknown>;
-        if (b.type === "text" && typeof b.text === "string") return b.text;
+        if (b.type === "text" && typeof b.text === "string") parts.push(b.text as string);
       }
+      if (parts.length > 0) return parts.join("");
     }
   }
   return "";
@@ -237,12 +240,55 @@ export default definePluginEntry({
     );
 
     // ── before_agent_start: plant the flag ──────────────────────────────────
-    api.on("before_agent_start", (_event, ctx) => {
+    api.on("before_agent_start", async (_event, ctx) => {
       const sessionKey = ctx.sessionKey;
       if (!sessionKey) return;
       // Skip true subagent sessions; allow user, system, and watchdog-injected wakes.
       if (ctx.trigger === "subagent") return;
       const watchdogDir = getWatchdogDir(ctx.workspaceDir, pluginCfg.watchdogDir as string | undefined);
+
+      // Check if last assistant reply already contained a stop/yield marker.
+      // This handles channels (e.g. cron-event) where agent_end/message_sent
+      // hooks are not reliably called.
+      const existingFlag = readFlag(watchdogDir, sessionKey);
+      if (existingFlag) {
+        try {
+          const { messages } = await api.runtime.subagent.getSessionMessages({
+            sessionKey,
+            limit: 5,
+          });
+          const lastText = extractLastAssistantText(messages);
+          const yieldMarker = (pluginCfg.yieldMarker as string | undefined) ?? DEFAULT_YIELD_MARKER;
+          // Debug
+          try {
+            const msgSummary = (messages as unknown[]).slice(-3).map((m) => {
+              const msg = m as Record<string, unknown>;
+              const c = msg.content;
+              return { role: msg.role, contentType: Array.isArray(c) ? `array(${(c as unknown[]).length})` : typeof c, len: typeof c === 'string' ? c.length : Array.isArray(c) ? (c as unknown[]).length : 0 };
+            });
+            fs.appendFileSync(
+              path.join(watchdogDir, "debug.log"),
+              JSON.stringify({ ts: new Date().toISOString(), hook: "before_agent_start", lastTextLen: lastText.length, first100: lastText.slice(0, 100), last300: lastText.slice(-300), stopFound: hasMarkerAtTail(lastText, stopMarker), yieldFound: hasMarkerAtTail(lastText, yieldMarker), msgSummary }) + "\n",
+              "utf8"
+            );
+          } catch { /* ignore */ }
+          if (hasMarkerAtTail(lastText, stopMarker) || hasMarkerAtTail(lastText, yieldMarker)) {
+            deleteFlag(watchdogDir, sessionKey);
+            // If it was a stop marker, don't plant a new flag — the previous run completed.
+            if (hasMarkerAtTail(lastText, stopMarker)) return;
+          }
+        } catch (err) {
+          // getSessionMessages failed — proceed normally, plant flag.
+          try {
+            fs.appendFileSync(
+              path.join(watchdogDir, "debug.log"),
+              JSON.stringify({ ts: new Date().toISOString(), hook: "before_agent_start", error: String(err) }) + "\n",
+              "utf8"
+            );
+          } catch { /* ignore */ }
+        }
+      }
+
       writeFlag(watchdogDir, sessionKey, {
         sessionKey,
         startedAt: new Date().toISOString(),
