@@ -18,12 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Get npm OIDC token
-        run: |
-          NPM_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
 
       - name: Publish
-        run: npm publish --provenance --access public
+        run: |
+          npm config set registry https://registry.npmjs.org
+          npm publish --provenance --access public
