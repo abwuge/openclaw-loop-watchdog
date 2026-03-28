@@ -19,9 +19,6 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
       - name: Publish
         run: |
           echo 'registry=https://registry.npmjs.org' > ~/.npmrc
