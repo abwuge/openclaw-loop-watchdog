@@ -366,6 +366,13 @@ export default definePluginEntry({
         return;
       }
 
+      // Heartbeat ACK — treat as implicit stop (no loop needed).
+      if (lastText.trimEnd().endsWith("HEARTBEAT_OK")) {
+        api.logger.info(`[loop-watchdog] heartbeat ACK detected, cleaning up`);
+        deleteFlag(watchdogDir, sessionKey);
+        return;
+      }
+
       // Intentional yield (waiting for subagent results) — leave the flag so
       // gateway_start can still recover after a crash, but do NOT send a wake
       // message. The subagent push-notification will re-enter the session.
