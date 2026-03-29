@@ -259,33 +259,13 @@ export default definePluginEntry({
           });
           const lastText = extractLastAssistantText(messages);
           const yieldMarker = (pluginCfg.yieldMarker as string | undefined) ?? DEFAULT_YIELD_MARKER;
-          // Debug
-          try {
-            const msgSummary = (messages as unknown[]).slice(-3).map((m) => {
-              const msg = m as Record<string, unknown>;
-              const c = msg.content;
-              return { role: msg.role, contentType: Array.isArray(c) ? `array(${(c as unknown[]).length})` : typeof c, len: typeof c === 'string' ? c.length : Array.isArray(c) ? (c as unknown[]).length : 0 };
-            });
-            fs.appendFileSync(
-              path.join(watchdogDir, "debug.log"),
-              JSON.stringify({ ts: new Date().toISOString(), hook: "before_agent_start", lastTextLen: lastText.length, first100: lastText.slice(0, 100), last300: lastText.slice(-300), stopFound: hasMarkerAtTail(lastText, stopMarker), yieldFound: hasMarkerAtTail(lastText, yieldMarker), msgSummary, stopMarker, stopMarkerCodes: Array.from(stopMarker).map(c => c.codePointAt(0)), markerIdx: lastText.trimEnd().lastIndexOf(stopMarker) }) + "\n",
-              "utf8"
-            );
-          } catch { /* ignore */ }
           if (hasMarkerAtTail(lastText, stopMarker) || hasMarkerAtTail(lastText, yieldMarker)) {
             deleteFlag(watchdogDir, sessionKey);
             // If it was a stop marker, don't plant a new flag — the previous run completed.
             if (hasMarkerAtTail(lastText, stopMarker)) return;
           }
-        } catch (err) {
+        } catch {
           // getSessionMessages failed — proceed normally, plant flag.
-          try {
-            fs.appendFileSync(
-              path.join(watchdogDir, "debug.log"),
-              JSON.stringify({ ts: new Date().toISOString(), hook: "before_agent_start", error: String(err) }) + "\n",
-              "utf8"
-            );
-          } catch { /* ignore */ }
         }
       }
 
@@ -312,15 +292,6 @@ export default definePluginEntry({
           ? (_event as Record<string, unknown>).content as string
           : "";
 
-      // Debug
-      try {
-        fs.appendFileSync(
-          path.join(watchdogDir, "debug.log"),
-          JSON.stringify({ ts: new Date().toISOString(), hook: "message_sent", textLen: text.length, text300: text.slice(-300), stopMarkerFound: hasMarkerAtTail(text, stopMarker) }) + "\n",
-          "utf8"
-        );
-      } catch { /* ignore */ }
-
       if (hasMarkerAtTail(text, stopMarker)) {
         deleteFlag(watchdogDir, sessionKey);
       }
@@ -334,29 +305,13 @@ export default definePluginEntry({
 
     // ── agent_end: check the flag ────────────────────────────────────────────
     api.on("agent_end", async (event, ctx) => {
-      api.logger.info(`[loop-watchdog] agent_end entered sk=${ctx.sessionKey}`);
       const sessionKey = ctx.sessionKey;
       if (!sessionKey) return;
       const watchdogDir = getWatchdogDir(ctx.workspaceDir, pluginCfg.watchdogDir as string | undefined);
       const flag = readFlag(watchdogDir, sessionKey);
-      api.logger.info(`[loop-watchdog] readFlag result: ${flag ? "found" : "null"} dir=${watchdogDir}`);
       if (!flag) return;
 
       const lastText = extractLastAssistantText(event.messages);
-
-      // Debug: write to file for diagnosis (remove after fix)
-      try {
-        const debugEntry = JSON.stringify({
-          ts: new Date().toISOString(),
-          sessionKey,
-          msgCount: event.messages?.length ?? -1,
-          lastTextLen: lastText.length,
-          lastText300: lastText.slice(-300),
-          stopMarkerFound: hasMarkerAtTail(lastText, stopMarker),
-          yieldMarkerFound: hasMarkerAtTail(lastText, (pluginCfg.yieldMarker as string | undefined) ?? DEFAULT_YIELD_MARKER),
-        }) + "\n";
-        fs.appendFileSync(path.join(watchdogDir, "debug.log"), debugEntry, "utf8");
-      } catch { /* ignore debug errors */ }
 
       // Intentional completion — clean up and stop.
       api.logger.info(`[loop-watchdog] lastText tail: ${JSON.stringify(lastText.slice(-150))}`);
