@@ -1,0 +1,24 @@
+{
+  "id": "openclaw-loop-watchdog",
+  "name": "Loop Watchdog",
+  "description": "Detects unintentional agent loop interruptions and prompts the agent to resume or confirm completion. After installation, the agent must end every completed task with a stop marker ([我确认工作循环需要结束...]), otherwise the watchdog will re-inject a wake message asking the agent to resume. Installation requires three steps: (1) openclaw plugins install @abwuge/openclaw-loop-watchdog, (2) openclaw loop-watchdog setup, (3) openclaw gateway restart. See README for the full stop marker format and AGENTS.md update instructions.",
+  "extensions": ["./index.ts"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "watchdogDir": {
+        "type": "string",
+        "description": "Directory to store watchdog flag files. Defaults to <workspaceDir>/watchdog."
+      },
+      "stopMarker": {
+        "type": "string",
+        "description": "Marker string agent must include at the end of its reply to signal intentional stop. Default: [我确认工作循环需要结束"
+      },
+      "yieldMarker": {
+        "type": "string",
+        "description": "Marker string agent must include at the end of its reply when intentionally yielding to wait for a subagent. Suppresses wake without deleting the flag. Default: [我正在等待子代理完成"
+      }
+    }
+  }
+}
